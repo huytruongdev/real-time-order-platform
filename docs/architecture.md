@@ -71,7 +71,7 @@ Cung cấp public interface cho inventory, ví dụ:
 - release(...)
 - commit(...)
 
-[NEEDS DESIGN] Chữ ký cụ thể của inventory interface phải được đề xuất và xác nhận trước khi code.
+Chữ ký cụ thể: `InventoryService` (ADR-036).
 
 ### Order Module
 

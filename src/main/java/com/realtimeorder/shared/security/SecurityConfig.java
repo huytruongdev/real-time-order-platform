@@ -49,6 +49,8 @@ public class SecurityConfig {
                         // Catalog public: xem menu không cần đăng nhập (ADR-035).
                         .requestMatchers(HttpMethod.GET, "/api/v1/restaurants/**").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/v1/orders/**").hasRole("CUSTOMER")
+                        .requestMatchers("/api/v1/restaurant/**").hasRole("RESTAURANT")
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2

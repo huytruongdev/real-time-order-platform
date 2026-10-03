@@ -572,7 +572,7 @@ Order chỉ gọi public application/domain interface của Catalog, ví dụ:
 
 ### Open items
 
-- [NEEDS DESIGN] Chữ ký cụ thể của interface phải được đề xuất và xác nhận trước khi code.
+- ~~[NEEDS DESIGN] Chữ ký cụ thể của interface phải được đề xuất và xác nhận trước khi code.~~ → Resolved bởi ADR-036.
 
 ---
 
@@ -633,7 +633,7 @@ Nếu chưa payment SUCCESS thì không có refund. Vì payment chỉ được t
 
 ### Open items
 
-- [NEEDS DECISION] Restaurant reject có release inventory reservation hay không (ADR-023 chưa liệt kê trường hợp này).
+- ~~[NEEDS DECISION] Restaurant reject có release inventory reservation hay không (ADR-023 chưa liệt kê trường hợp này).~~ → Resolved bởi ADR-036: có release.
 
 ---
 
@@ -739,6 +739,38 @@ Nếu không có driver: Delivery → WAITING_FOR_DRIVER và tiếp tục retry 
 
 ---
 
+## ADR-036: Phase 3 Technical Design (Order + Inventory Reservation)
+
+**Status: Accepted.** Giải quyết các [NEEDS DESIGN]/[NEEDS DECISION] cần cho Phase 3. Amends ADR-023.
+
+### Quyết định
+
+- **Restaurant reject release reservation.** Danh sách release của ADR-023 được bổ sung: Customer cancel, Restaurant reject, Payment expiration / system cancel.
+- **Phạm vi Phase 3:** tạo order, xem order, Customer cancel, Restaurant confirm/reject, order status history. Synchronous, không Kafka. CONFIRMED → PREPARING và các transition sau thuộc phase Payment/Delivery.
+- **Inventory interface** (`catalog.application.InventoryService`):
+  - `List<ReservedItem> reserve(UUID orderId, UUID restaurantId, List<ReservationLine> lines)`: kiểm tra restaurant ACTIVE, product ACTIVE và thuộc restaurant; trả snapshot `productId, productName, unitPrice, quantity`. Tất cả hoặc không gì cả.
+  - `void release(UUID orderId)`: RESERVED → RELEASED, trả stock về available. Idempotent.
+  - `void commit(UUID orderId)`: RESERVED → COMMITTED (đã bán), reserved giảm. Idempotent. Dùng ở phase Payment.
+  - Chạy trong transaction của caller (REQUIRED): order và stock cùng commit/rollback.
+- **Chống oversell:** atomic conditional UPDATE `available_stock = available_stock - q, reserved_stock = reserved_stock + q WHERE available_stock >= q`. Cập nhật 0 row → 409 `INSUFFICIENT_STOCK`.
+- **Tránh deadlock:** reserve/release/commit luôn lock product theo `productId` tăng dần.
+- **Reservation theo order:** bảng `inventory_reservations (order_id, product_id, quantity, status)`, unique `(order_id, product_id)`. release/commit lock các dòng RESERVED bằng `SELECT ... FOR UPDATE`, nên gọi trùng hoặc đồng thời chỉ trả stock một lần. Sold quantity được ghi nhận bằng các reservation COMMITTED.
+- **Order concurrency:** optimistic locking `@Version` (server-side). Customer cancel và Restaurant confirm đồng thời: bên thua nhận 409 `CONCURRENT_MODIFICATION` (hoặc `INVALID_ORDER_TRANSITION` nếu đọc sau khi bên thắng commit); release stock của bên thua rollback cùng.
+- **Order data:**
+  - `order_items` lưu snapshot `product_name`, `unit_price`; `total_amount` do server tính. Client không gửi giá.
+  - `orders.cancel_reason` ∈ `CUSTOMER_CANCELLED | RESTAURANT_REJECTED | PAYMENT_EXPIRED`, có khi và chỉ khi CANCELLED.
+  - `order_status_history.actor` ∈ `CUSTOMER | RESTAURANT | DRIVER | SYSTEM`; `changed_by` NULL khi và chỉ khi actor = SYSTEM.
+  - Order ID được sinh trước khi reserve (reservation tham chiếu orderId).
+- **API:** `/api/v1/orders/**` chỉ CUSTOMER, `/api/v1/restaurant/**` chỉ RESTAURANT. Order không thuộc user đang gọi → 404 `ORDER_NOT_FOUND` (không tiết lộ order có tồn tại).
+- **Validation:** 1–50 item, quantity 1–100, không trùng productId (400 `DUPLICATE_ORDER_ITEM`).
+
+### Hệ quả
+
+- Idempotency cho tạo order (client retry tạo hai order) chưa xử lý; thuộc phase Redis/Idempotency.
+- Customer cancel khi đã có payment SUCCESS (refund) bổ sung ở phase Payment.
+
+---
+
 # Open Business Decisions
 
 Đã giải quyết bởi ADR-030 đến ADR-033:
@@ -748,6 +780,8 @@ Nếu không có driver: Delivery → WAITING_FOR_DRIVER và tiếp tục retry 
 - ~~Order FAILED~~ → ADR-032
 - ~~System cancel ngoài payment expiration~~ → ADR-033
 
-Còn lại:
+Đã giải quyết bởi ADR-036:
 
-- [NEEDS DECISION] Restaurant reject (CREATED → CANCELLED) có release inventory reservation hay không. Phát hiện khi kiểm tra consistency giữa ADR-023 và ADR-031: nếu không release thì stock bị giữ vĩnh viễn cho Order đã CANCELLED.
+- ~~Restaurant reject (CREATED → CANCELLED) có release inventory reservation hay không~~ → Có release.
+
+Còn lại: không có.

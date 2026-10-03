@@ -106,28 +106,37 @@ Ownership: `owner_user_id`, một Restaurant user có thể sở hữu nhiều r
 
 Inventory thuộc Catalog Module.
 
-Ghi chú Phase 3: có thể tạm dùng một cột stock (decrement/restore), nhưng thiết kế phải mở rộng được sang available_stock/reserved_stock.
-
 Migration: `V4__create_products.sql`. Inventory lưu trực tiếp trong bảng products; stock chỉ thay đổi bằng atomic conditional UPDATE (ADR-035).
 
-[NEEDS DESIGN] Cách ghi nhận sold quantity khi reservation được commit (Payment SUCCESS).
+### inventory_reservations
 
-[NEEDS DESIGN] Có cần lưu reservation theo từng order (để release/commit chính xác và idempotent) hay không.
+Migration: `V5__create_inventory_reservations.sql` (ADR-036).
+
+- id (UUID)
+- order_id (không có FK sang orders)
+- product_id (FK → products)
+- quantity (> 0)
+- status (RESERVED, RELEASED, COMMITTED)
+- created_at
+- updated_at
+
+Unique `(order_id, product_id)`. Sold quantity = tổng quantity của các reservation COMMITTED.
 
 ### orders
 
+Migration: `V6__create_orders.sql` (ADR-036).
+
 - id (UUID)
-- user_id
+- customer_id
 - restaurant_id
 - status (CREATED, CONFIRMED, PREPARING, READY, DRIVER_ASSIGNED, PICKING_UP, DELIVERING, DELIVERED, CANCELLED)
+- cancel_reason (CUSTOMER_CANCELLED, RESTAURANT_REJECTED, PAYMENT_EXPIRED; chỉ có khi CANCELLED)
 - total_amount
 - version
 - created_at
 - updated_at
 
 Order không có status FAILED, PAID hoặc PAYMENT_EXPIRED.
-
-[NEEDS DESIGN] Lưu lý do cancel (customer cancel, restaurant reject, payment expiration) hay chỉ dựa vào order_status_history.
 
 [NEEDS DESIGN] Lưu thời điểm CONFIRMED / payment deadline ở đâu để phục vụ payment expiration.
 
@@ -136,22 +145,20 @@ Order không có status FAILED, PAID hoặc PAYMENT_EXPIRED.
 - id (UUID)
 - order_id
 - product_id
+- product_name (snapshot)
 - quantity
-- unit_price
-- subtotal
-
-[NEEDS DESIGN] Có snapshot product name tại thời điểm đặt hàng hay không.
+- unit_price (snapshot)
+- subtotal (= unit_price × quantity, CHECK constraint)
 
 ### order_status_history
 
 - id (UUID)
 - order_id
-- old_status
+- old_status (NULL ở dòng tạo order)
 - new_status
-- changed_by
+- actor (CUSTOMER, RESTAURANT, DRIVER, SYSTEM)
+- changed_by (user id; NULL khi và chỉ khi actor = SYSTEM)
 - created_at
-
-[NEEDS DESIGN] Giá trị changed_by khi system thay đổi trạng thái (payment expiration, ...).
 
 ### payments
 
@@ -241,7 +248,7 @@ Foreign key chỉ dùng trong cùng module, không dùng giữa bảng của cá
 
 Inventory chống oversell bằng database (source of truth), không dùng Redis Lock làm cơ chế chính.
 
-[NEEDS DESIGN] Chọn cơ chế cho inventory: atomic conditional UPDATE, pessimistic lock (SELECT ... FOR UPDATE), hoặc optimistic locking.
+Inventory dùng atomic conditional UPDATE, lock product theo productId tăng dần để tránh deadlock (ADR-036).
 
 Các entity có khả năng xảy ra concurrent update cần xem xét sử dụng Optimistic Locking.
 

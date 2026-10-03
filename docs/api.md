@@ -132,19 +132,38 @@ POST /api/v1/admin/products/{id}/stock-adjustments
 
 ## Orders (Customer)
 
+Chỉ role CUSTOMER. Order của customer khác → 404 `ORDER_NOT_FOUND`.
+
+Order response:
+
+```json
+{
+  "id", "customerId", "restaurantId", "status", "cancelReason", "totalAmount",
+  "items": [{ "productId", "productName", "unitPrice", "quantity", "subtotal" }],
+  "createdAt", "updatedAt"
+}
+```
+
 POST /api/v1/orders
+
+- Body: `{ "restaurantId", "items": [{ "productId", "quantity" }] }`. 1–50 item, quantity 1–100. Client không gửi giá.
+- 201: order CREATED, stock đã được reserve.
+- 409 `INSUFFICIENT_STOCK`, 400 `PRODUCT_NOT_AVAILABLE`, 400 `DUPLICATE_ORDER_ITEM`, 404 `RESTAURANT_NOT_FOUND`.
 
 GET /api/v1/orders/{id}
 
-GET /api/v1/orders
+GET /api/v1/orders (paginated, mới nhất trước)
 
 POST /api/v1/orders/{id}/cancel
+
+- 200: order CANCELLED (`cancelReason = CUSTOMER_CANCELLED`), reservation được release.
+- 409 `INVALID_ORDER_TRANSITION` nếu không ở CREATED/CONFIRMED. 409 `CONCURRENT_MODIFICATION` nếu đồng thời với thao tác khác.
 
 Business rules:
 
 - Tạo order sẽ reserve inventory.
 - Customer chỉ được cancel khi Order ở CREATED hoặc CONFIRMED.
-- Cancel hợp lệ khi đã có payment SUCCESS: Payment → REFUNDED.
+- Cancel hợp lệ khi đã có payment SUCCESS: Payment → REFUNDED (phase Payment).
 
 `GET /api/v1/orders/{id}` là endpoint client dùng để lấy state mới nhất khi WebSocket reconnect.
 
@@ -160,7 +179,19 @@ Restaurant cần các thao tác:
 - Chuyển CONFIRMED → PREPARING (chỉ khi payment SUCCESS)
 - Chuyển PREPARING → READY (trigger tạo Delivery)
 
-[NEEDS DESIGN] Path cụ thể cho các endpoint Restaurant.
+Chỉ role RESTAURANT, chỉ với order của restaurant mình sở hữu (khác → 404 `ORDER_NOT_FOUND`). Response giống Order response.
+
+GET /api/v1/restaurant/orders?status=CREATED (paginated, `status` tuỳ chọn)
+
+POST /api/v1/restaurant/orders/{id}/confirm
+
+- CREATED → CONFIRMED. Reservation được giữ. 409 `INVALID_ORDER_TRANSITION`.
+
+POST /api/v1/restaurant/orders/{id}/reject
+
+- CREATED → CANCELLED (`cancelReason = RESTAURANT_REJECTED`), reservation được release (ADR-036). 409 `INVALID_ORDER_TRANSITION`.
+
+Endpoint PREPARING / READY: phase Payment / Delivery.
 
 ---
 

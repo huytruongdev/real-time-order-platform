@@ -9,6 +9,7 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Transient;
 import org.springframework.data.domain.Persistable;
 
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -30,6 +31,14 @@ public abstract class BaseEntity implements Persistable<UUID> {
 
     protected BaseEntity() {
         this.id = IdGenerator.newId();
+    }
+
+    /**
+     * Dùng khi ID phải có trước khi tạo entity, ví dụ Order: ID được truyền cho Catalog để
+     * reserve inventory, rồi mới tạo Order từ kết quả reserve.
+     */
+    protected BaseEntity(UUID id) {
+        this.id = Objects.requireNonNull(id, "id");
     }
 
     @Override

@@ -11,6 +11,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -56,6 +57,20 @@ public class CatalogQueryService {
         }
         return productRepository.findByRestaurantIdAndStatus(restaurantId, CatalogStatus.ACTIVE, pageOf(page, size))
                 .map(ProductView::from);
+    }
+
+    /**
+     * Restaurant mà user sở hữu (ADR-035), dùng để Order kiểm tra quyền của Restaurant user.
+     * Gồm cả restaurant INACTIVE: restaurant ngừng bán vẫn phải xử lý được các order đang dở.
+     */
+    @Transactional(readOnly = true)
+    public List<UUID> findRestaurantIdsOwnedBy(UUID userId) {
+        return restaurantRepository.findIdsByOwnerUserId(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isOwner(UUID restaurantId, UUID userId) {
+        return restaurantRepository.existsByIdAndOwnerUserId(restaurantId, userId);
     }
 
     static Pageable pageOf(int page, int size) {

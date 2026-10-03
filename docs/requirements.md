@@ -331,10 +331,9 @@ Customer đặt 3:   available_stock = 7,  reserved_stock = 3
 Reservation chỉ được release khi:
 
 - Customer cancel Order hợp lệ
+- Restaurant reject Order (ADR-036)
 - Payment timeout/expiration
 - Order bị system cancel
-
-[NEEDS DECISION] Restaurant reject (CREATED → CANCELLED) có release reservation hay không. Danh sách trên chưa bao gồm trường hợp này; nếu không release thì stock bị giữ vĩnh viễn cho một Order đã CANCELLED.
 
 Database là source of truth cho inventory.
 

@@ -41,4 +41,52 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
                AND available_stock + :delta >= 0
             """, nativeQuery = true)
     int adjustAvailableStock(@Param("id") UUID id, @Param("delta") int delta, @Param("now") Instant now);
+
+    /**
+     * Reserve: chuyển {@code quantity} từ available sang reserved (ADR-023, ADR-036).
+     *
+     * Chống oversell bằng điều kiện {@code available_stock >= :quantity} trong cùng câu UPDATE.
+     * Hai customer cùng mua món cuối: UPDATE thứ hai chờ row lock, sau đó kiểm tra lại điều kiện
+     * trên giá trị mới (available = 0) và cập nhật 0 row.
+     *
+     * Không dùng {@code clearAutomatically}: clear sẽ detach mọi entity trong transaction,
+     * kể cả entity của module gọi tới (ví dụ Order), và thay đổi sau đó trên chúng sẽ bị mất.
+     * Product entity đã load có thể giữ giá trị stock cũ, nhưng không bao giờ ghi lại stock
+     * (cột {@code updatable = false}).
+     *
+     * @return 1 nếu thành công, 0 nếu không đủ stock
+     */
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            UPDATE products
+               SET available_stock = available_stock - :quantity,
+                   reserved_stock = reserved_stock + :quantity,
+                   updated_at = :now
+             WHERE id = :id
+               AND available_stock >= :quantity
+            """, nativeQuery = true)
+    int reserveStock(@Param("id") UUID id, @Param("quantity") int quantity, @Param("now") Instant now);
+
+    /** Release: trả {@code quantity} từ reserved về available. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            UPDATE products
+               SET available_stock = available_stock + :quantity,
+                   reserved_stock = reserved_stock - :quantity,
+                   updated_at = :now
+             WHERE id = :id
+               AND reserved_stock >= :quantity
+            """, nativeQuery = true)
+    int releaseStock(@Param("id") UUID id, @Param("quantity") int quantity, @Param("now") Instant now);
+
+    /** Commit: reservation thành đã bán, reserved giảm, available giữ nguyên. */
+    @Modifying(flushAutomatically = true)
+    @Query(value = """
+            UPDATE products
+               SET reserved_stock = reserved_stock - :quantity,
+                   updated_at = :now
+             WHERE id = :id
+               AND reserved_stock >= :quantity
+            """, nativeQuery = true)
+    int commitStock(@Param("id") UUID id, @Param("quantity") int quantity, @Param("now") Instant now);
 }
