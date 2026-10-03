@@ -19,13 +19,12 @@ Schema được quản lý bằng Flyway migration.
 - Tất cả primary key sử dụng UUIDv7.
 - UUID được generate ở application layer, không dùng default của database.
 
-[NEEDS DESIGN] Thư viện/cách generate UUIDv7 trong Java.
+UUIDv7 sinh bằng thư viện JUG (ADR-034).
 
 ### Kiểu dữ liệu
 
-[NEEDS DESIGN] Kiểu dữ liệu cho tiền (ví dụ NUMERIC) và currency.
-
-[NEEDS DESIGN] Kiểu dữ liệu cho timestamp (ví dụ TIMESTAMPTZ).
+- Tiền: `NUMERIC(12,2)`, Java `BigDecimal`. Một currency duy nhất (VND), không có cột currency (ADR-035).
+- Timestamp: `TIMESTAMPTZ`, Java `Instant` (ADR-034).
 
 ### Ownership theo module
 
@@ -78,14 +77,18 @@ Migration: `V2__create_refresh_tokens.sql`. Chi tiết: ADR-034.
 
 ### restaurants
 
+Migration: `V3__create_restaurants.sql`.
+
 - id (UUID)
+- owner_user_id (user role RESTAURANT; không có FK sang users)
 - name
 - address
-- status
+- status (ACTIVE, INACTIVE)
+- version
 - created_at
 - updated_at
 
-[NEEDS DESIGN] Cách liên kết Restaurant user với restaurant (ownership) để kiểm tra quyền.
+Ownership: `owner_user_id`, một Restaurant user có thể sở hữu nhiều restaurant (ADR-035).
 
 ### products
 
@@ -97,7 +100,7 @@ Migration: `V2__create_refresh_tokens.sql`. Chi tiết: ADR-034.
 - available_stock
 - reserved_stock
 - status
-- version (nếu dùng optimistic locking)
+- version (optimistic locking cho thông tin product, KHÔNG tăng khi stock thay đổi)
 - created_at
 - updated_at
 
@@ -105,7 +108,7 @@ Inventory thuộc Catalog Module.
 
 Ghi chú Phase 3: có thể tạm dùng một cột stock (decrement/restore), nhưng thiết kế phải mở rộng được sang available_stock/reserved_stock.
 
-[NEEDS DESIGN] Inventory lưu trực tiếp trong bảng products hay tách bảng riêng.
+Migration: `V4__create_products.sql`. Inventory lưu trực tiếp trong bảng products; stock chỉ thay đổi bằng atomic conditional UPDATE (ADR-035).
 
 [NEEDS DESIGN] Cách ghi nhận sold quantity khi reservation được commit (Payment SUCCESS).
 
@@ -230,7 +233,7 @@ Ví dụ:
 
 [NEEDS DESIGN] Constraint đảm bảo một Order không có nhiều hơn một payment SUCCESS.
 
-[NEEDS DESIGN] Có dùng foreign key giữa các bảng thuộc module khác nhau hay không.
+Foreign key chỉ dùng trong cùng module, không dùng giữa bảng của các module khác nhau (ADR-035).
 
 ---
 

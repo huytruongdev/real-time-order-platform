@@ -55,7 +55,7 @@ Restaurant có thể:
 - Từ chối đơn hàng (chỉ khi Order = CREATED)
 - Cập nhật trạng thái chuẩn bị món
 
-[NEEDS DESIGN] Cách xác định Restaurant user sở hữu restaurant nào (ownership) để kiểm tra quyền.
+Ownership: `restaurants.owner_user_id` (ADR-035).
 
 ### Driver
 

@@ -37,6 +37,12 @@ public final class AuthExceptions {
         }
     }
 
+    public static final class RoleNotAssignableException extends BusinessException {
+        public RoleNotAssignableException() {
+            super(ErrorType.BAD_REQUEST, "ROLE_NOT_ASSIGNABLE", "Chỉ được tạo user với role RESTAURANT hoặc DRIVER");
+        }
+    }
+
     public static final class UserNotFoundException extends BusinessException {
         public UserNotFoundException() {
             super(ErrorType.NOT_FOUND, "USER_NOT_FOUND", "User không tồn tại");

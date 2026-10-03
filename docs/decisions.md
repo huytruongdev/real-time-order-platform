@@ -705,7 +705,37 @@ Nếu không có driver: Delivery → WAITING_FOR_DRIVER và tiếp tục retry 
 ### Hệ quả
 
 - Access token còn hạn vẫn dùng được sau logout cho đến khi hết hạn (đặc điểm của stateless JWT).
-- [NEEDS DESIGN] Cách tạo user có role RESTAURANT/DRIVER/ADMIN (Admin API hoặc seed data).
+- ~~[NEEDS DESIGN] Cách tạo user có role RESTAURANT/DRIVER/ADMIN (Admin API hoặc seed data).~~ → Resolved bởi ADR-035.
+
+---
+
+## ADR-035: Phase 2 Technical Design (Catalog)
+
+**Status: Accepted.** Giải quyết các [NEEDS DESIGN] cần cho Phase 2.
+
+### Quyết định
+
+- **Phạm vi:** Phase 2 gồm schema catalog, API đọc public, Admin CRUD restaurant/product, Admin nhập kho. Inventory interface `reserve/release/commit` và cơ chế chống oversell khi đặt hàng thuộc Phase 3 (cùng Order).
+- **Tạo user role khác CUSTOMER:**
+  - ADMIN được tạo lúc khởi động từ `bootstrap.admin.email/password/name` (env `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `ADMIN_NAME`). Idempotent; email đã tồn tại thì không thay đổi gì (không nâng quyền tài khoản có sẵn). Không seed bằng Flyway.
+  - RESTAURANT/DRIVER do Admin tạo qua `POST /api/v1/admin/users`. API không tạo được ADMIN hoặc CUSTOMER.
+- **Ownership:** `restaurants.owner_user_id` (NOT NULL). Một user RESTAURANT có thể sở hữu nhiều restaurant. Catalog kiểm tra owner tồn tại và có role RESTAURANT qua `UserQuery` (public interface của User module).
+- **Foreign key:** chỉ dùng FK trong cùng module (ví dụ `products.restaurant_id → restaurants`). Không dùng FK giữa bảng của các module khác nhau; toàn vẹn được kiểm tra ở application layer.
+- **Tiền:** `NUMERIC(12,2)` + Java `BigDecimal`. Toàn hệ thống dùng một currency (VND), chưa có cột currency.
+- **Inventory:** lưu trong bảng `products` (`available_stock`, `reserved_stock`, CHECK `>= 0`).
+  - Stock chỉ được thay đổi bằng atomic conditional UPDATE (`SET available_stock = available_stock + :delta WHERE available_stock + :delta >= 0`).
+  - Cột stock trên entity là `updatable = false`, để việc sửa thông tin product không ghi đè stock (lost update).
+  - `version` (`@Version`) chỉ bảo vệ thông tin product (name/description/price/status); thay đổi stock không tăng version.
+- **Admin nhập kho bằng delta** (`POST /admin/products/{id}/stock-adjustments`), không set giá trị tuyệt đối. Delta khác 0, trong khoảng ±1 000 000; không đủ stock → 409 `INSUFFICIENT_STOCK`.
+- **Optimistic locking qua HTTP:** PUT của Admin phải gửi `version` đã đọc. Sai version → 409 `CONCURRENT_MODIFICATION`. `OptimisticLockingFailureException` của Hibernate cũng map về cùng mã lỗi.
+- **Không xoá cứng:** restaurant/product có `status ACTIVE | INACTIVE`. API public chỉ trả về ACTIVE; restaurant INACTIVE được xem như không tồn tại (404).
+- **Pagination:** offset `?page=0&size=20`, `size` từ 1 đến 100. Response `{ content, page, size, totalElements, totalPages }` (`PageResponse`), không serialize trực tiếp `Page` của Spring Data. Sort luôn có tiêu chí phụ `id` để thứ tự xác định.
+- **Phân quyền:** `GET /api/v1/restaurants/**` là public. `/api/v1/admin/**` yêu cầu role ADMIN.
+
+### Hệ quả
+
+- Database không tự chặn được `owner_user_id` trỏ tới user không tồn tại. Chấp nhận được vì user không bị xoá cứng.
+- Phase 3 có thể dùng lại pattern atomic conditional UPDATE cho reserve/release/commit.
 
 ---
 

@@ -40,3 +40,11 @@ security:
     access-token-ttl: 15m
   refresh-token:
     ttl: 7d
+
+bootstrap:
+  # ADMIN đầu tiên được tạo lúc khởi động nếu email chưa tồn tại (ADR-035).
+  # Để trống ADMIN_EMAIL thì bỏ qua. Không có password mặc định.
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}
+    name: ${ADMIN_NAME:Administrator}

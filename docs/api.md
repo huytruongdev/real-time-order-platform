@@ -8,7 +8,13 @@ Tất cả ID trong path và body là UUID.
 
 Error response: ProblemDetail (RFC 7807), có thêm property `code` (mã lỗi ổn định) và `errors` (lỗi validation theo field).
 
-[NEEDS DESIGN] Pagination cho các endpoint dạng list.
+Pagination (ADR-035): query `?page=0&size=20` (`page >= 0`, `1 <= size <= 100`). Response:
+
+```json
+{ "content": [], "page": 0, "size": 20, "totalElements": 42, "totalPages": 3 }
+```
+
+Lỗi validation của query/path param: 400 `VALIDATION_FAILED`.
 
 ---
 
@@ -51,13 +57,76 @@ GET /api/v1/users/me
 
 ## Catalog (Restaurants / Products)
 
+Public, không cần đăng nhập. Chỉ trả về restaurant/product ACTIVE. Sort theo `name`, rồi `id`.
+
 GET /api/v1/restaurants
+
+- Paginated. Item: `{ "id", "name", "address" }`.
 
 GET /api/v1/restaurants/{id}
 
+- 404 `RESTAURANT_NOT_FOUND` nếu không tồn tại hoặc INACTIVE.
+
 GET /api/v1/restaurants/{id}/products
 
-[NEEDS DESIGN] Endpoint quản lý restaurant/product/inventory cho Admin.
+- Paginated. Item: `{ "id", "restaurantId", "name", "description", "price", "availableStock" }`.
+- 404 `RESTAURANT_NOT_FOUND` nếu restaurant không tồn tại hoặc INACTIVE.
+
+---
+
+## Admin
+
+Tất cả endpoint `/api/v1/admin/**` yêu cầu role ADMIN (401 nếu chưa đăng nhập, 403 nếu sai role).
+
+ADMIN đầu tiên được tạo lúc khởi động từ `ADMIN_EMAIL` / `ADMIN_PASSWORD` (ADR-035).
+
+### Users
+
+POST /api/v1/admin/users
+
+- Body: `{ "email", "password", "name", "role" }`, `role` ∈ `RESTAURANT | DRIVER`.
+- 201: giống response của register. 409 `EMAIL_ALREADY_USED`. 400 `VALIDATION_FAILED`.
+
+### Restaurants
+
+Response admin: `{ "id", "ownerUserId", "name", "address", "status", "version", "createdAt", "updatedAt" }`.
+
+POST /api/v1/admin/restaurants
+
+- Body: `{ "ownerUserId", "name", "address" }`. Restaurant mới luôn ACTIVE.
+- 201. 400 `INVALID_RESTAURANT_OWNER` nếu owner không tồn tại hoặc không có role RESTAURANT.
+
+GET /api/v1/admin/restaurants (paginated, gồm cả INACTIVE)
+
+GET /api/v1/admin/restaurants/{id}
+
+PUT /api/v1/admin/restaurants/{id}
+
+- Body: `{ "name", "address", "status", "version" }`. `version` là giá trị đã đọc được.
+- 409 `CONCURRENT_MODIFICATION` nếu version đã thay đổi.
+
+### Products
+
+Response admin: `{ "id", "restaurantId", "name", "description", "price", "availableStock", "reservedStock", "status", "version", "createdAt", "updatedAt" }`.
+
+POST /api/v1/admin/restaurants/{id}/products
+
+- Body: `{ "name", "description", "price", "initialStock" }`. `price` > 0, tối đa 2 chữ số thập phân. `0 <= initialStock <= 1000000`.
+- 201. 404 `RESTAURANT_NOT_FOUND`.
+
+GET /api/v1/admin/restaurants/{id}/products (paginated, gồm cả INACTIVE)
+
+GET /api/v1/admin/products/{id}
+
+PUT /api/v1/admin/products/{id}
+
+- Body: `{ "name", "description", "price", "status", "version" }`. Không thay đổi stock.
+- 409 `CONCURRENT_MODIFICATION` nếu version đã thay đổi.
+
+POST /api/v1/admin/products/{id}/stock-adjustments
+
+- Body: `{ "delta" }`, delta khác 0, trong khoảng ±1000000. Cộng atomic vào `availableStock`.
+- 200: product sau khi điều chỉnh. 409 `INSUFFICIENT_STOCK` nếu kết quả âm. 400 `INVALID_STOCK_ADJUSTMENT` nếu delta = 0.
 
 ---
 
@@ -139,9 +208,9 @@ Business rules:
 
 ---
 
-## Admin
+## Admin (các phase sau)
 
-[NEEDS DESIGN] Endpoint quản lý user, restaurant, product; xem order, payment, system events.
+[NEEDS DESIGN] Endpoint xem order, payment, system events.
 
 ---
 

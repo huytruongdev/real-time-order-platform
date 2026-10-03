@@ -51,6 +51,11 @@ public class User extends BaseEntity {
         return new User(email, passwordHash, name, Role.CUSTOMER, now);
     }
 
+    /** User có role bất kỳ, chỉ dùng cho luồng do Admin hoặc hệ thống tạo (ADR-035). */
+    public static User createWithRole(String email, String passwordHash, String name, Role role, Instant now) {
+        return new User(email, passwordHash, name, role, now);
+    }
+
     /**
      * Email là định danh đăng nhập: "A@x.com" và "a@x.com " phải là cùng một user.
      * Normalize trước khi lưu để unique constraint trong DB có hiệu lực đúng.
