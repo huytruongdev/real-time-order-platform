@@ -6,35 +6,58 @@ Kafka được sử dụng cho asynchronous event-driven communication.
 
 Kafka không thay thế PostgreSQL làm source of truth.
 
+Kafka được đưa vào từ Phase 6. Phase 3 không dùng Kafka. Phase 5 implement synchronous flow trước để hiểu coupling.
+
 ---
 
 ## 2. Topics
 
 ### order-events
 
-Các event:
+Tất cả order-related events sử dụng topic `order-events` với Kafka key = `orderId`.
+
+Specific domain events (phục vụ domain/integration use cases):
 
 - OrderCreated
 - OrderConfirmed
 - OrderCancelled
 
-### payment-events
+Event phục vụ notification/WebSocket:
 
-Các event:
+- OrderStatusChanged
+
+Specific event và OrderStatusChanged có thể được publish cho cùng một state transition.
+
+Ví dụ khi Order chuyển CREATED → CONFIRMED:
+
+```text
+OrderConfirmed
+OrderStatusChanged
+```
+
+[NEEDS DESIGN] Hai event của cùng một transition được publish như thế nào (thứ tự, mỗi event có eventId riêng).
+
+### payment-events
 
 - PaymentCompleted
 - PaymentFailed
 
-### delivery-events
+[NEEDS DESIGN] Kafka key cho payment-events.
 
-Các event:
+[NEEDS DESIGN] Có cần event cho payment EXPIRED/REFUNDED hay không.
+
+### delivery-events
 
 - DriverAssigned
 - OrderDelivered
 
+[NEEDS DESIGN] Kafka key cho delivery-events.
+
+[NEEDS DESIGN] Có cần event cho các delivery state khác (DRIVER_ACCEPTED, re-assign, ...) hay không.
+
 ### notification-events
 
-Các event dùng để trigger notification đến user.
+[NEEDS DESIGN] Có cần topic này hay không, vì OrderStatusChanged trên order-events đã phục vụ notification/WebSocket.
 
 ---
 
@@ -46,14 +69,19 @@ Ví dụ:
 
 ```json
 {
-  "eventId": "uuid",
-  "eventType": "OrderCreated",
-  "aggregateId": "123",
+  "eventId": "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+  "eventType": "OrderStatusChanged",
+  "aggregateId": "0190a1b2-0000-7000-8000-000000000001",
   "occurredAt": "2026-01-01T10:00:00Z",
   "version": 1,
   "payload": {}
 }
 ```
+
+- `eventId`: UUIDv7, dùng cho consumer idempotency.
+- `aggregateId`: UUID của aggregate (ví dụ orderId).
+
+[NEEDS DESIGN] Ý nghĩa của `version`: schema version của event hay aggregate version (orders.version). Aggregate version hữu ích để consumer/client bỏ qua event cũ.
 
 ---
 
@@ -76,25 +104,23 @@ Project phải giúp hiểu được:
 
 ## 5. Delivery Guarantee
 
-Thiết kế ban đầu sử dụng At-Least-Once Delivery.
+Sử dụng At-Least-Once Delivery.
 
-Điều này có nghĩa consumer có thể nhận cùng một event nhiều lần.
+Consumer có thể nhận cùng một event nhiều lần.
 
-Consumer phải có khả năng xử lý duplicate event mà không gây ra side effect sai.
+Consumer phải idempotent và xử lý duplicate event mà không gây ra side effect sai.
+
+[NEEDS DESIGN] Cơ chế consumer idempotency (bảng processed_events, kiểm tra theo state machine, hoặc kết hợp).
 
 ---
 
-## 6. Partitioning
+## 6. Partitioning và Ordering
 
-Các event thuộc cùng một aggregate nên sử dụng cùng partition key khi cần đảm bảo ordering.
+Các event thuộc cùng một Order sử dụng key = `orderId` trên topic `order-events`, nên thứ tự được giữ trong cùng partition.
 
-Ví dụ:
+Kafka KHÔNG đảm bảo ordering giữa các topic khác nhau (order-events, payment-events, delivery-events).
 
-```text
-orderId
-```
-
-Điều này giúp duy trì thứ tự event đối với một order.
+[NEEDS DESIGN] Cách consumer xử lý event đến không đúng thứ tự giữa các topic.
 
 ---
 
@@ -112,13 +138,13 @@ Cần xem xét:
 
 Retry và Dead Letter strategy phải được thiết kế trước khi implementation.
 
+[NEEDS DESIGN] Retry strategy (số lần, backoff) và Dead Letter Topic naming.
+
 ---
 
-## 8. Outbox Pattern
+## 8. Publish trước khi có Outbox (Phase 6 – Phase 8)
 
-Project sẽ nghiên cứu và triển khai Outbox Pattern ở phase sau.
-
-Mục tiêu là xử lý vấn đề:
+Trước khi có Outbox, publish Kafka có vấn đề dual-write:
 
 ```text
 Database transaction thành công
@@ -126,6 +152,16 @@ Database transaction thành công
         X
 Kafka publish thất bại
 ```
+
+Đây là vấn đề được chấp nhận có chủ đích để hiểu trước khi học Outbox.
+
+[NEEDS DESIGN] Thời điểm publish trong Phase 6 (ví dụ sau khi transaction commit) để tránh publish event của transaction đã rollback.
+
+---
+
+## 9. Outbox Pattern (Phase 9)
+
+Outbox Pattern được triển khai ở Phase 9.
 
 Approach dự kiến:
 
@@ -143,6 +179,4 @@ Business Transaction
                   Kafka
 ```
 
-Không triển khai Outbox ngay từ đầu.
-
-Trước tiên cần hiểu Kafka producer/consumer cơ bản, sau đó mới triển khai Outbox Pattern.
+Không triển khai Outbox trước Phase 9.

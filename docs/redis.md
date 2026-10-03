@@ -2,9 +2,14 @@
 
 ## 1. Mục đích
 
-Redis được sử dụng cho performance và distributed coordination.
+Redis được sử dụng cho:
+
+- Cache
+- Idempotency
 
 Redis không phải source of truth.
+
+Mất dữ liệu Redis không được làm sai business state; PostgreSQL vẫn là nguồn chân lý.
 
 ---
 
@@ -21,6 +26,8 @@ product:{id}
 
 Nên sử dụng TTL phù hợp.
 
+[NEEDS DESIGN] Giá trị TTL và dữ liệu nào của product được cache (inventory thay đổi thường xuyên, cần cân nhắc có cache available_stock hay không).
+
 ---
 
 ### Idempotency
@@ -33,25 +40,11 @@ idempotency:payment:{key}
 
 Dùng để hỗ trợ ngăn duplicate request.
 
----
+Unique constraint trên `payments.idempotency_key` trong PostgreSQL là cơ chế đảm bảo cuối cùng; Redis là lớp hỗ trợ.
 
-### Distributed Lock
+[NEEDS DESIGN] Hành vi khi cùng key nhưng khác payload, và khi request đầu tiên với cùng key vẫn đang xử lý.
 
-Có thể sử dụng để xử lý các operation có khả năng xảy ra concurrent update.
-
-Ví dụ:
-
-```text
-lock:product:{productId}
-```
-
-Cần nghiên cứu:
-
-- Lock expiration
-- Process crash khi đang giữ lock
-- Unlock ownership
-- Race condition
-- Lock timeout
+[NEEDS DESIGN] TTL của idempotency key.
 
 ---
 
@@ -77,15 +70,42 @@ PostgreSQL
 
 Cần xử lý cache invalidation khi dữ liệu trong database thay đổi.
 
+[NEEDS DESIGN] Thời điểm invalidate (sau khi transaction commit) và cách xử lý race condition của cache-aside.
+
 ---
 
-## 4. Không sử dụng Redis cho
+## 4. Nghiên cứu: Distributed Lock
+
+Distributed Lock chỉ dùng để nghiên cứu và so sánh với database locking.
+
+KHÔNG dùng Redis Lock làm giải pháp mặc định cho inventory. Inventory chống oversell bằng PostgreSQL.
+
+Ví dụ key dùng trong thí nghiệm:
+
+```text
+lock:product:{productId}
+```
+
+Cần nghiên cứu:
+
+- Lock expiration
+- Process crash khi đang giữ lock
+- Unlock ownership
+- Race condition
+- Lock timeout
+- So sánh với database locking (atomic update, pessimistic lock, optimistic lock)
+
+---
+
+## 5. Không sử dụng Redis cho
 
 Không sử dụng Redis làm primary source cho:
 
 - Orders
 - Payments
 - Users
+- Refresh tokens
+- Inventory
 - Financial transactions
 
 Các dữ liệu này phải được lưu trong PostgreSQL.

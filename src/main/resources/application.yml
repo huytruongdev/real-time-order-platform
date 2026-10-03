@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: real-time-order-platform
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/order_platform}
+    username: ${DB_USERNAME:order_platform}
+    password: ${DB_PASSWORD:order_platform}
+
+  jpa:
+    # Schema do Flyway quản lý; Hibernate chỉ validate mapping.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  mvc:
+    problemdetails:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+security:
+  jwt:
+    issuer: real-time-order-platform
+    # HMAC-SHA256 secret, Base64, tối thiểu 256 bit.
+    # Giá trị mặc định CHỈ dùng cho local development. Production phải set JWT_SECRET.
+    secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWNoYW5nZS1tZS1kZXYtb25seS1zZWNyZXQtMzItYnl0ZXM=}
+    access-token-ttl: 15m
+  refresh-token:
+    ttl: 7d

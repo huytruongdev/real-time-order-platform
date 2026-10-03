@@ -1,0 +1,22 @@
+# Hạ tầng local cho development.
+# Phase 0-1 chỉ cần PostgreSQL. Redis/Kafka sẽ được thêm ở phase tương ứng.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: rtop-postgres
+    environment:
+      POSTGRES_DB: order_platform
+      POSTGRES_USER: order_platform
+      POSTGRES_PASSWORD: order_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order_platform -d order_platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
